@@ -32,6 +32,28 @@ const defaultContext: ToolHandlerContext = {
   sendProgress: async () => {},
 };
 
+// Fork-local safety note: on Windows, the OS active codepage is frequently
+// NOT UTF-8 (e.g. 949/CP949 on Korean-locale systems). Codex CLI's own
+// internal file-write tool calls go through this codepage on Windows, which
+// can silently corrupt non-ASCII bytes (mojibake) with no error surfaced.
+// Verified empirically 2026-08-05: Codex wrote Korean text as mojibake on a
+// CP949 system when not told to write UTF-8 explicitly, and wrote it
+// correctly once instructed to use an explicit UTF-8-safe method.
+//
+// This is a probability nudge, not a guarantee (the model can still ignore
+// it) — non-ASCII writes must still be verified on disk after the fact
+// regardless of whether this note fired. Opt out with
+// CODEX_MCP_DISABLE_WIN_UTF8_NOTE=1 (e.g. for ASCII-only projects where the
+// per-call overhead isn't worth it).
+const WINDOWS_UTF8_SAFETY_NOTE =
+  '[Windows] Non-ASCII file writes can get corrupted by the OS codepage. Use an explicit UTF-8 write (PowerShell Set-Content -Encoding UTF8 / Python open(...,encoding="utf-8")), not shell redirection or cmd echo.\n\n';
+
+const withPlatformSafetyNotes = (prompt: string): string =>
+  process.platform === 'win32' &&
+  process.env.CODEX_MCP_DISABLE_WIN_UTF8_NOTE !== '1'
+    ? WINDOWS_UTF8_SAFETY_NOTE + prompt
+    : prompt;
+
 const isStructuredContentEnabled = (): boolean => {
   const raw = process.env.STRUCTURED_CONTENT_ENABLED;
   if (!raw) return false;
@@ -92,6 +114,11 @@ export class CodexToolHandler {
           }
         }
       }
+
+      // Fork-local: auto-inject the Windows UTF-8 write-safety note (see
+      // WINDOWS_UTF8_SAFETY_NOTE above). This tool can write files (unlike
+      // review/websearch), so it's the one that needs the warning.
+      enhancedPrompt = withPlatformSafetyNotes(enhancedPrompt);
 
       // Build command arguments with v0.75.0+ features
       const selectedModel =

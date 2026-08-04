@@ -17,6 +17,16 @@ const mockedExecuteCommandStreaming =
   >;
 
 describe('Working Directory (cwd) Support', () => {
+  // Deterministic across platforms/CI: disable the fork's Windows UTF-8
+  // safety-note injection so prompt-content assertions below don't depend
+  // on which OS actually runs the suite.
+  beforeAll(() => {
+    process.env.CODEX_MCP_DISABLE_WIN_UTF8_NOTE = '1';
+  });
+  afterAll(() => {
+    delete process.env.CODEX_MCP_DISABLE_WIN_UTF8_NOTE;
+  });
+
   let codexHandler: CodexToolHandler;
   let reviewHandler: ReviewToolHandler;
   let sessionStorage: InMemorySessionStorage;
