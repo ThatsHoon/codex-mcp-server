@@ -1,7 +1,9 @@
 import {
   TOOLS,
   DEFAULT_CODEX_MODEL,
+  DEFAULT_REVIEW_MODEL,
   CODEX_DEFAULT_MODEL_ENV_VAR,
+  CODEX_REVIEW_MODEL_ENV_VAR,
   type ToolResult,
   type ToolHandlerContext,
   type CodexToolArgs,
@@ -414,10 +416,13 @@ export class ReviewToolHandler {
       }
 
       // Add model parameter via config
+      // Reviewer role uses its own default (DEFAULT_REVIEW_MODEL), separate
+      // from the implementer role's DEFAULT_CODEX_MODEL, so each can be
+      // pinned independently (fork-local change).
       const selectedModel =
         model ||
-        process.env[CODEX_DEFAULT_MODEL_ENV_VAR] ||
-        DEFAULT_CODEX_MODEL;
+        process.env[CODEX_REVIEW_MODEL_ENV_VAR] ||
+        DEFAULT_REVIEW_MODEL;
       cmdArgs.push('-c', `model="${selectedModel}"`);
 
       cmdArgs.push('review');

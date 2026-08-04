@@ -13,11 +13,27 @@ export const TOOLS = {
 export type ToolName = typeof TOOLS[keyof typeof TOOLS];
 
 // Codex model constants
-export const DEFAULT_CODEX_MODEL = 'gpt-5.3-codex' as const;
+// NOTE (fork-local): the upstream '*-codex' model family (gpt-5.3-codex,
+// gpt-5.2-codex, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5-codex) all return
+// HTTP 400 "not supported when using Codex with a ChatGPT account" when
+// authenticated via `codex login` (ChatGPT Plus/Pro/Business/Edu/Enterprise
+// subscription auth, not an API key). Verified empirically 2026-08-05 against
+// codex-cli 0.146.0. gpt-5.6-sol and gpt-5.6-terra are the models that
+// actually work under ChatGPT-account auth on this account. Implementer
+// (codex tool) and reviewer (review tool) get separate defaults so each role
+// can be pinned independently.
+export const DEFAULT_CODEX_MODEL = 'gpt-5.6-terra' as const; // implementer role
+export const DEFAULT_REVIEW_MODEL = 'gpt-5.6-sol' as const; // reviewer role
 export const CODEX_DEFAULT_MODEL_ENV_VAR = 'CODEX_DEFAULT_MODEL' as const;
+export const CODEX_REVIEW_MODEL_ENV_VAR = 'CODEX_REVIEW_MODEL' as const;
 
 // Available model options (for documentation/reference)
 export const AVAILABLE_CODEX_MODELS = [
+  'gpt-5.6-terra',
+  'gpt-5.6-sol',
+  // Legacy '*-codex' family: only confirmed to work under API-key auth
+  // (codex login --with-api-key), NOT under ChatGPT-account auth. Kept for
+  // users on API-key billing.
   'gpt-5.3-codex',
   'gpt-5.2-codex',
   'gpt-5.1-codex',
@@ -33,9 +49,9 @@ export const AVAILABLE_CODEX_MODELS = [
 export const getModelDescription = (toolType: 'codex' | 'review') => {
   const modelList = AVAILABLE_CODEX_MODELS.join(', ');
   if (toolType === 'codex') {
-    return `Specify which model to use (defaults to ${DEFAULT_CODEX_MODEL}). Options: ${modelList}`;
+    return `Specify which model to use (defaults to ${DEFAULT_CODEX_MODEL}). Options: ${modelList}. Under ChatGPT-account auth, only gpt-5.6-terra/gpt-5.6-sol are confirmed working; the '*-codex' family requires API-key auth.`;
   }
-  return `Specify which model to use for the review (defaults to ${DEFAULT_CODEX_MODEL})`;
+  return `Specify which model to use for the review (defaults to ${DEFAULT_REVIEW_MODEL}). Under ChatGPT-account auth, only gpt-5.6-terra/gpt-5.6-sol are confirmed working; the '*-codex' family requires API-key auth.`;
 };
 
 // Tool annotations for MCP 2025-11-25 spec
