@@ -10,10 +10,21 @@ import { type CommandResult } from '../types.js';
  * Escape argument for Windows shell (cmd.exe)
  */
 function escapeArgForWindows(arg: string): string {
+  // Fork-local fix: cmd.exe (invoked via `spawn(..., { shell: true })`) builds
+  // a single command-line string. An embedded raw newline inside an argument
+  // silently truncates everything after it when that string reaches cmd.exe —
+  // even inside double quotes, quoting does not protect against a literal
+  // line terminator. Multi-line prompts (very common — e.g. this file's own
+  // WINDOWS_UTF8_SAFETY_NOTE + prompt concatenation) were being cut at the
+  // first newline with no error surfaced. Verified empirically 2026-08-12:
+  // the truncated prompt never reached Codex (confirmed via
+  // ~/.codex/sessions rollout logs). Collapsing newlines to spaces preserves
+  // all content; only literal line breaks in the rendered prompt are lost.
+  let escaped = arg.replace(/\r\n|\r|\n/g, ' ');
   // Escape percent signs to prevent environment variable expansion
-  let escaped = arg.replace(/%/g, '%%');
+  escaped = escaped.replace(/%/g, '%%');
   // If arg contains spaces or special chars, wrap in double quotes
-  if (/[\s"&|<>^%]/.test(arg)) {
+  if (/[\s"&|<>^%]/.test(escaped)) {
     // Escape internal double quotes using CMD-style doubling
     escaped = `"${escaped.replace(/"/g, '""')}"`;
   }
