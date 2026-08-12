@@ -25,6 +25,9 @@ import {
 import {
   toolHandlers,
   CodexToolHandler,
+  CodexStartToolHandler,
+  JobStatusToolHandler,
+  JobListToolHandler,
   ReviewToolHandler,
   PingToolHandler,
   HelpToolHandler,
@@ -37,10 +40,13 @@ import { CodexMcpServer } from '../server.js';
 describe('Codex MCP Server', () => {
   describe('Tool Definitions', () => {
     test('should have all required tools defined', () => {
-      expect(toolDefinitions).toHaveLength(6);
+      expect(toolDefinitions).toHaveLength(9);
 
       const toolNames = toolDefinitions.map((tool) => tool.name);
       expect(toolNames).toContain(TOOLS.CODEX);
+      expect(toolNames).toContain(TOOLS.CODEX_START);
+      expect(toolNames).toContain(TOOLS.CODEX_JOB_STATUS);
+      expect(toolNames).toContain(TOOLS.CODEX_JOB_LIST);
       expect(toolNames).toContain(TOOLS.REVIEW);
       expect(toolNames).toContain(TOOLS.WEBSEARCH);
       expect(toolNames).toContain(TOOLS.PING);
@@ -83,6 +89,9 @@ describe('Codex MCP Server', () => {
   describe('Tool Handlers', () => {
     test('should have handlers for all tools', () => {
       expect(toolHandlers[TOOLS.CODEX]).toBeInstanceOf(CodexToolHandler);
+      expect(toolHandlers[TOOLS.CODEX_START]).toBeInstanceOf(CodexStartToolHandler);
+      expect(toolHandlers[TOOLS.CODEX_JOB_STATUS]).toBeInstanceOf(JobStatusToolHandler);
+      expect(toolHandlers[TOOLS.CODEX_JOB_LIST]).toBeInstanceOf(JobListToolHandler);
       expect(toolHandlers[TOOLS.REVIEW]).toBeInstanceOf(ReviewToolHandler);
       expect(toolHandlers[TOOLS.WEBSEARCH]).toBeInstanceOf(
         WebSearchToolHandler

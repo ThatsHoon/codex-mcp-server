@@ -3,6 +3,9 @@ import { z } from 'zod';
 // Tool constants
 export const TOOLS = {
   CODEX: 'codex',
+  CODEX_START: 'codexStart',
+  CODEX_JOB_STATUS: 'codexJobStatus',
+  CODEX_JOB_LIST: 'codexJobList',
   REVIEW: 'review',
   PING: 'ping',
   HELP: 'help',
@@ -135,6 +138,25 @@ export const ReviewToolSchema = z.object({
   workingDirectory: z.string().optional(),
 });
 
+// codexStart uses the same shape as CodexToolSchema minus sessionId/resetSession
+// (a fire-and-forget job has no interactive resume concept — poll it via jobId
+// instead). Kept as a separate schema rather than reusing CodexToolSchema so
+// the two tools can diverge later without cross-contamination.
+export const CodexStartToolSchema = z.object({
+  prompt: z.string(),
+  model: z.string().optional(),
+  reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+  sandbox: SandboxMode.optional(),
+  fullAuto: z.boolean().optional(),
+  workingDirectory: z.string().optional(),
+});
+
+export const JobStatusToolSchema = z.object({
+  jobId: z.string().min(1, 'jobId is required'),
+});
+
+export const JobListToolSchema = z.object({});
+
 export const PingToolSchema = z.object({
   message: z.string().optional(),
 });
@@ -151,6 +173,9 @@ export const WebSearchToolSchema = z.object({
 });
 
 export type CodexToolArgs = z.infer<typeof CodexToolSchema>;
+export type CodexStartToolArgs = z.infer<typeof CodexStartToolSchema>;
+export type JobStatusToolArgs = z.infer<typeof JobStatusToolSchema>;
+export type JobListToolArgs = z.infer<typeof JobListToolSchema>;
 export type ReviewToolArgs = z.infer<typeof ReviewToolSchema>;
 export type PingToolArgs = z.infer<typeof PingToolSchema>;
 export type ListSessionsToolArgs = z.infer<typeof ListSessionsToolSchema>;

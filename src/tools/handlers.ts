@@ -7,10 +7,16 @@ import {
   type ToolResult,
   type ToolHandlerContext,
   type CodexToolArgs,
+  type CodexStartToolArgs,
+  type JobStatusToolArgs,
+  type JobListToolArgs,
   type ReviewToolArgs,
   type PingToolArgs,
   type WebSearchToolArgs,
   CodexToolSchema,
+  CodexStartToolSchema,
+  JobStatusToolSchema,
+  JobListToolSchema,
   ReviewToolSchema,
   PingToolSchema,
   HelpToolSchema,
@@ -22,6 +28,7 @@ import {
   type SessionStorage,
   type ConversationTurn,
 } from '../session/storage.js';
+import { InMemoryJobStore, type JobStore } from '../jobs/store.js';
 import { ToolExecutionError, ValidationError } from '../errors.js';
 import { executeCommand, executeCommandStreaming } from '../utils/command.js';
 import { ZodError } from 'zod';
@@ -302,6 +309,175 @@ ${result.stdout || ''}`.trim();
 
     // Build enhanced prompt that provides context without conversation format
     return `${contextualInfo}\n\nTask: ${newPrompt}`;
+  }
+}
+
+/**
+ * Fires a codex exec WITHOUT awaiting it, tracks the child process in a
+ * JobStore, and returns a jobId immediately. This is the closest analogue
+ * this transport can offer to Claude Code's Agent-tool background dispatch.
+ *
+ * Deliberately does not support sessionId/resume: a fire-and-forget job
+ * that might still be running when the next call comes in has no sane
+ * "resume this" semantics. Poll codexJobStatus/codexJobList instead.
+ */
+export class CodexStartToolHandler {
+  constructor(private jobStore: JobStore) {}
+
+  async execute(
+    args: unknown,
+    _context: ToolHandlerContext = defaultContext
+  ): Promise<ToolResult> {
+    try {
+      const {
+        prompt,
+        model,
+        reasoningEffort,
+        sandbox,
+        fullAuto,
+        workingDirectory,
+      }: CodexStartToolArgs = CodexStartToolSchema.parse(args);
+
+      const resolvedWorkDir = workingDirectory
+        ? path.resolve(workingDirectory)
+        : undefined;
+      const selectedModel =
+        model || process.env[CODEX_DEFAULT_MODEL_ENV_VAR] || DEFAULT_CODEX_MODEL;
+      const enhancedPrompt = withPlatformSafetyNotes(prompt);
+
+      const cmdArgs: string[] = ['exec', '--model', selectedModel];
+      if (reasoningEffort) {
+        cmdArgs.push('-c', `model_reasoning_effort="${reasoningEffort}"`);
+      }
+      if (sandbox) {
+        cmdArgs.push('--sandbox', sandbox);
+      }
+      if (fullAuto) {
+        cmdArgs.push('--full-auto');
+      }
+      if (resolvedWorkDir) {
+        cmdArgs.push('-C', resolvedWorkDir);
+      }
+      cmdArgs.push('--skip-git-repo-check', enhancedPrompt);
+
+      const jobId = this.jobStore.create(prompt);
+
+      // Deliberately not awaited: this is the whole point of "start".
+      executeCommand('codex', cmdArgs, { cwd: resolvedWorkDir })
+        .then((result) => {
+          this.jobStore.markCompleted(jobId, result.stdout, result.stderr);
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.jobStore.markFailed(jobId, message);
+        });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Job started: ${jobId}. Poll with codexJobStatus({ jobId: "${jobId}" }) or codexJobList().`,
+            _meta: { jobId, status: 'running' },
+          },
+        ],
+        structuredContent: isStructuredContentEnabled()
+          ? { jobId, status: 'running' }
+          : undefined,
+      };
+    } catch (error) {
+      if (error instanceof ZodError) {
+        throw new ValidationError(TOOLS.CODEX_START, error.message);
+      }
+      throw new ToolExecutionError(
+        TOOLS.CODEX_START,
+        'Failed to start codex job',
+        error
+      );
+    }
+  }
+}
+
+export class JobStatusToolHandler {
+  constructor(private jobStore: JobStore) {}
+
+  async execute(
+    args: unknown,
+    _context: ToolHandlerContext = defaultContext
+  ): Promise<ToolResult> {
+    try {
+      const { jobId }: JobStatusToolArgs = JobStatusToolSchema.parse(args);
+      const job = this.jobStore.get(jobId);
+
+      if (!job) {
+        return {
+          content: [
+            { type: 'text', text: `No job found with id ${jobId} (expired or never existed).` },
+          ],
+          isError: true,
+        };
+      }
+
+      const text =
+        job.status === 'running'
+          ? `Job ${job.id}: running (started ${job.startedAt.toISOString()})`
+          : job.status === 'completed'
+            ? `Job ${job.id}: completed (${job.completedAt?.toISOString()})\n\n${job.stdout || job.stderr || 'No output'}`
+            : `Job ${job.id}: failed (${job.completedAt?.toISOString()})\n\n${job.error}`;
+
+      return {
+        content: [{ type: 'text', text, _meta: { jobId: job.id, status: job.status } }],
+        structuredContent: isStructuredContentEnabled()
+          ? { jobId: job.id, status: job.status }
+          : undefined,
+      };
+    } catch (error) {
+      if (error instanceof ZodError) {
+        throw new ValidationError(TOOLS.CODEX_JOB_STATUS, error.message);
+      }
+      throw new ToolExecutionError(
+        TOOLS.CODEX_JOB_STATUS,
+        'Failed to check job status',
+        error
+      );
+    }
+  }
+}
+
+export class JobListToolHandler {
+  constructor(private jobStore: JobStore) {}
+
+  async execute(
+    args: unknown,
+    _context: ToolHandlerContext = defaultContext
+  ): Promise<ToolResult> {
+    try {
+      JobListToolSchema.parse(args);
+      const jobs = this.jobStore.list().map((job) => ({
+        id: job.id,
+        status: job.status,
+        prompt: job.prompt.slice(0, 100),
+        startedAt: job.startedAt.toISOString(),
+        completedAt: job.completedAt?.toISOString(),
+      }));
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: jobs.length > 0 ? JSON.stringify(jobs, null, 2) : 'No jobs',
+          },
+        ],
+      };
+    } catch (error) {
+      if (error instanceof ZodError) {
+        throw new ValidationError(TOOLS.CODEX_JOB_LIST, error.message);
+      }
+      throw new ToolExecutionError(
+        TOOLS.CODEX_JOB_LIST,
+        'Failed to list jobs',
+        error
+      );
+    }
   }
 }
 
@@ -609,9 +785,13 @@ export class WebSearchToolHandler {
 
 // Tool handler registry
 const sessionStorage = new InMemorySessionStorage();
+const jobStore = new InMemoryJobStore();
 
 export const toolHandlers = {
   [TOOLS.CODEX]: new CodexToolHandler(sessionStorage),
+  [TOOLS.CODEX_START]: new CodexStartToolHandler(jobStore),
+  [TOOLS.CODEX_JOB_STATUS]: new JobStatusToolHandler(jobStore),
+  [TOOLS.CODEX_JOB_LIST]: new JobListToolHandler(jobStore),
   [TOOLS.REVIEW]: new ReviewToolHandler(),
   [TOOLS.PING]: new PingToolHandler(),
   [TOOLS.HELP]: new HelpToolHandler(),

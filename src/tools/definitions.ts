@@ -70,6 +70,99 @@ export const toolDefinitions: ToolDefinition[] = [
     },
   },
   {
+    name: TOOLS.CODEX_START,
+    description:
+      'Start a Codex CLI execution WITHOUT waiting for it to finish. Returns a jobId immediately (background dispatch, analogous to Claude Code\'s Agent tool with run_in_background). No sessionId support (fire-and-forget only) and no automatic completion notification is possible over this transport — poll with codexJobStatus or codexJobList to check progress/results.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'The coding task, question, or analysis request',
+        },
+        model: {
+          type: 'string',
+          description: getModelDescription('codex'),
+        },
+        reasoningEffort: {
+          type: 'string',
+          enum: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+          description:
+            'Control reasoning depth (none < minimal < low < medium < high < xhigh)',
+        },
+        sandbox: {
+          type: 'string',
+          enum: ['read-only', 'workspace-write', 'danger-full-access'],
+          description:
+            'Sandbox policy for shell command execution. read-only: no writes allowed, workspace-write: writes only in workspace, danger-full-access: full system access (dangerous)',
+        },
+        fullAuto: {
+          type: 'boolean',
+          description:
+            'Enable full-auto mode: sandboxed automatic execution without approval prompts',
+        },
+        workingDirectory: {
+          type: 'string',
+          description: 'Working directory for the agent to use as its root (passed via -C flag)',
+        },
+      },
+      required: ['prompt'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        jobId: { type: 'string' },
+        status: { type: 'string' },
+      },
+    },
+    annotations: {
+      title: 'Start Codex Job (async)',
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: TOOLS.CODEX_JOB_STATUS,
+    description:
+      'Check the status of a job started with codexStart. Returns "running" until the process exits, then "completed" (with stdout/stderr) or "failed" (with an error message).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: {
+          type: 'string',
+          description: 'The jobId returned by codexStart',
+        },
+      },
+      required: ['jobId'],
+    },
+    annotations: {
+      title: 'Check Codex Job Status',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: TOOLS.CODEX_JOB_LIST,
+    description:
+      'List all background jobs started with codexStart (running, completed, and failed), newest first.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+    annotations: {
+      title: 'List Codex Jobs',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
     name: TOOLS.REVIEW,
     description:
       'Run a code review against the current repository using Codex CLI',
