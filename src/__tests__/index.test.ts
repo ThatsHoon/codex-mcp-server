@@ -40,7 +40,7 @@ import { CodexMcpServer } from '../server.js';
 describe('Codex MCP Server', () => {
   describe('Tool Definitions', () => {
     test('should have all required tools defined', () => {
-      expect(toolDefinitions).toHaveLength(9);
+      expect(toolDefinitions).toHaveLength(11);
 
       const toolNames = toolDefinitions.map((tool) => tool.name);
       expect(toolNames).toContain(TOOLS.CODEX);
