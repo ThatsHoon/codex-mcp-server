@@ -172,7 +172,7 @@ export const toolDefinitions: ToolDefinition[] = [
         prompt: {
           type: 'string',
           description:
-            'Custom review instructions or focus areas (cannot be used with uncommitted=true; use base/commit review instead)',
+            'Custom review instructions or focus areas. Cannot be combined with uncommitted, base, or commit — the underlying codex CLI rejects `review --base/--commit <PROMPT>` and `review --uncommitted <PROMPT>` at the argument-parsing level (verified empirically). Use prompt alone: it can instruct Codex to read a diff file itself via its own file-read capability (pass workingDirectory so it can resolve relative paths). Or omit prompt and use base/commit/uncommitted for a plain diff review with no custom instructions.',
         },
         uncommitted: {
           type: 'boolean',
@@ -182,11 +182,12 @@ export const toolDefinitions: ToolDefinition[] = [
         base: {
           type: 'string',
           description:
-            'Review changes against a specific base branch (e.g., "main", "develop")',
+            'Review changes against a specific base branch (e.g., "main", "develop") - cannot be combined with custom prompt',
         },
         commit: {
           type: 'string',
-          description: 'Review the changes introduced by a specific commit SHA',
+          description:
+            'Review the changes introduced by a specific commit SHA - cannot be combined with custom prompt',
         },
         title: {
           type: 'string',
