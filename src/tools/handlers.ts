@@ -618,6 +618,13 @@ export class ReviewToolHandler {
         );
       }
 
+      if (prompt && (base || commit)) {
+        throw new ValidationError(
+          TOOLS.REVIEW,
+          'The review prompt cannot be combined with base or commit — the underlying codex CLI rejects `review --base/--commit <PROMPT>` at the argument-parsing level (verified empirically). Use prompt alone (it can instruct Codex to read a diff file itself via its own file-read capability) or omit the prompt and use base/commit for a plain diff review.'
+        );
+      }
+
       // Resolve to absolute path once so -C and spawn cwd agree
       const resolvedWorkDir = workingDirectory
         ? path.resolve(workingDirectory)
@@ -720,6 +727,14 @@ export class ReviewToolHandler {
       if (reviewId) {
         const message = error instanceof Error ? error.message : String(error);
         this.reviewStore.markFailed(reviewId, message);
+      } else if (error instanceof ZodError || error instanceof ValidationError) {
+        // Fork-local: a rejected call (bad args, or an unsupported
+        // prompt+base/commit combo) still gets a record, so
+        // reviewList/reviewStatus can audit "an attempt happened and was
+        // rejected" — not just successful dispatches.
+        const message = error instanceof Error ? error.message : String(error);
+        const rejectedId = this.reviewStore.create({});
+        this.reviewStore.markFailed(rejectedId, message);
       }
       if (error instanceof ZodError) {
         throw new ValidationError(TOOLS.REVIEW, error.message);

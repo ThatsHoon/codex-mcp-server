@@ -82,4 +82,42 @@ describe('review tracking (review / reviewStatus / reviewList)', () => {
     const result = await status.execute({ reviewId: 'does-not-exist' });
     expect(result.isError).toBe(true);
   });
+
+  test('prompt combined with base is rejected before any codex exec, and recorded in the store', async () => {
+    mockExecuteCommand.mockClear();
+    const store = new InMemoryReviewStore();
+    const review = new ReviewToolHandler(store);
+
+    await expect(
+      review.execute({ base: 'main', prompt: 'custom rubric text' })
+    ).rejects.toThrow(/cannot be combined with base or commit/);
+
+    expect(mockExecuteCommand).not.toHaveBeenCalled();
+    const [record] = store.list();
+    expect(record.status).toBe('failed');
+    expect(record.error).toMatch(/cannot be combined with base or commit/);
+  });
+
+  test('prompt combined with commit is rejected the same way', async () => {
+    mockExecuteCommand.mockClear();
+    const store = new InMemoryReviewStore();
+    const review = new ReviewToolHandler(store);
+
+    await expect(
+      review.execute({ commit: 'abc123', prompt: 'custom rubric text' })
+    ).rejects.toThrow(/cannot be combined with base or commit/);
+
+    expect(mockExecuteCommand).not.toHaveBeenCalled();
+  });
+
+  test('malformed args (ZodError) are recorded in the store as a rejected review', async () => {
+    mockExecuteCommand.mockClear();
+    const store = new InMemoryReviewStore();
+    const review = new ReviewToolHandler(store);
+
+    await expect(review.execute({ round: 'not-a-number' })).rejects.toThrow();
+
+    const [record] = store.list();
+    expect(record.status).toBe('failed');
+  });
 });
