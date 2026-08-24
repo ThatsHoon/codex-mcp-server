@@ -630,13 +630,6 @@ export class ReviewToolHandler {
         ? path.resolve(workingDirectory)
         : undefined;
 
-      // Build command arguments for codex review
-      const cmdArgs: string[] = [];
-
-      if (resolvedWorkDir) {
-        cmdArgs.push('-C', resolvedWorkDir);
-      }
-
       // Add model parameter via config
       // Reviewer role uses its own default (DEFAULT_REVIEW_MODEL), separate
       // from the implementer role's DEFAULT_CODEX_MODEL, so each can be
@@ -645,30 +638,63 @@ export class ReviewToolHandler {
         model ||
         process.env[CODEX_REVIEW_MODEL_ENV_VAR] ||
         DEFAULT_REVIEW_MODEL;
-      cmdArgs.push('-c', `model="${selectedModel}"`);
 
-      cmdArgs.push('review');
+      // Build command arguments for codex review
+      const cmdArgs: string[] = [];
 
-      // Add review-specific flags
-      if (uncommitted) {
-        cmdArgs.push('--uncommitted');
-      }
+      // Fork-local Windows workaround: the `codex review` subcommand hardcodes
+      // sandbox=read-only and does not honor `-c sandbox_permissions=...`
+      // overrides. On Windows, codex's read-only sandbox blocks ALL
+      // exec_command calls (verified empirically: even `Get-Content` on a
+      // plain text file is rejected with "blocked by policy"), which breaks
+      // every prompt-driven review that asks Codex to read a diff/brief file
+      // itself. `codex exec -s danger-full-access` does not have this
+      // restriction. This fork's usage of `review` is prompt-only (base/
+      // commit/uncommitted are validated as mutually exclusive with prompt
+      // above), so route the prompt path through `exec` instead of `review`
+      // on Windows; the non-prompt (base/commit/uncommitted) path is
+      // untouched since it isn't exercised by this fork's callers.
+      const usePromptViaExec = process.platform === 'win32' && !!prompt;
 
-      if (base) {
-        cmdArgs.push('--base', base);
-      }
+      if (usePromptViaExec) {
+        cmdArgs.push('exec');
+        cmdArgs.push('--model', selectedModel);
+        cmdArgs.push('--sandbox', 'danger-full-access');
+        if (resolvedWorkDir) {
+          cmdArgs.push('-C', resolvedWorkDir);
+        }
+        cmdArgs.push('--skip-git-repo-check');
+        cmdArgs.push(prompt as string);
+      } else {
+        if (resolvedWorkDir) {
+          cmdArgs.push('-C', resolvedWorkDir);
+        }
 
-      if (commit) {
-        cmdArgs.push('--commit', commit);
-      }
+        cmdArgs.push('-c', `model="${selectedModel}"`);
 
-      if (title) {
-        cmdArgs.push('--title', title);
-      }
+        cmdArgs.push('review');
 
-      // Add custom review instructions if provided
-      if (prompt) {
-        cmdArgs.push(prompt);
+        // Add review-specific flags
+        if (uncommitted) {
+          cmdArgs.push('--uncommitted');
+        }
+
+        if (base) {
+          cmdArgs.push('--base', base);
+        }
+
+        if (commit) {
+          cmdArgs.push('--commit', commit);
+        }
+
+        if (title) {
+          cmdArgs.push('--title', title);
+        }
+
+        // Add custom review instructions if provided
+        if (prompt) {
+          cmdArgs.push(prompt);
+        }
       }
 
       // Fork-local: track this call before it runs, so a crash mid-review
