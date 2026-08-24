@@ -1,5 +1,6 @@
 import { CodexToolHandler, ReviewToolHandler } from '../tools/handlers.js';
 import { InMemorySessionStorage } from '../session/storage.js';
+import { InMemoryReviewStore } from '../tracking/review-store.js';
 import { executeCommand, executeCommandStreaming } from '../utils/command.js';
 
 // Mock the command execution
@@ -34,7 +35,7 @@ describe('Working Directory (cwd) Support', () => {
   beforeEach(() => {
     sessionStorage = new InMemorySessionStorage();
     codexHandler = new CodexToolHandler(sessionStorage);
-    reviewHandler = new ReviewToolHandler();
+    reviewHandler = new ReviewToolHandler(new InMemoryReviewStore());
     mockedExecuteCommand.mockClear();
     mockedExecuteCommandStreaming.mockClear();
     mockedExecuteCommand.mockResolvedValue({

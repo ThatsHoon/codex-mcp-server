@@ -1,5 +1,6 @@
 import { CodexToolHandler, ReviewToolHandler } from '../tools/handlers.js';
 import { InMemorySessionStorage } from '../session/storage.js';
+import { InMemoryReviewStore } from '../tracking/review-store.js';
 import { executeCommand } from '../utils/command.js';
 import { ToolExecutionError, ValidationError } from '../errors.js';
 
@@ -98,7 +99,7 @@ describe('Error Handling Scenarios', () => {
   });
 
   test('should reject review prompt with uncommitted', async () => {
-    const reviewHandler = new ReviewToolHandler();
+    const reviewHandler = new ReviewToolHandler(new InMemoryReviewStore());
 
     await expect(
       reviewHandler.execute({

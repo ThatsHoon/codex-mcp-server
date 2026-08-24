@@ -33,6 +33,7 @@ import {
   type ConversationTurn,
 } from '../session/storage.js';
 import { InMemoryJobStore, type JobStore } from '../jobs/store.js';
+import { InMemoryReviewStore, type ReviewStore } from '../tracking/review-store.js';
 import { ToolExecutionError, ValidationError } from '../errors.js';
 import { executeCommand, executeCommandStreaming } from '../utils/command.js';
 import { ZodError } from 'zod';
@@ -588,10 +589,13 @@ export class ListSessionsToolHandler {
 }
 
 export class ReviewToolHandler {
+  constructor(private reviewStore: ReviewStore) {}
+
   async execute(
     args: unknown,
     context: ToolHandlerContext = defaultContext
   ): Promise<ToolResult> {
+    let reviewId: string | undefined;
     try {
       const {
         prompt,
@@ -601,6 +605,10 @@ export class ReviewToolHandler {
         title,
         model,
         workingDirectory,
+        planId,
+        taskId,
+        round,
+        phase,
       }: ReviewToolArgs = ReviewToolSchema.parse(args);
 
       if (prompt && uncommitted) {
@@ -656,6 +664,16 @@ export class ReviewToolHandler {
         cmdArgs.push(prompt);
       }
 
+      // Fork-local: track this call before it runs, so a crash mid-review
+      // still leaves a 'failed' record instead of no record at all.
+      reviewId = this.reviewStore.create({
+        planId,
+        taskId,
+        round,
+        phase,
+        model: selectedModel,
+      });
+
       // Send initial progress notification
       await context.sendProgress('Starting code review...', 0);
 
@@ -676,10 +694,13 @@ export class ReviewToolHandler {
       const response =
         result.stdout || result.stderr || 'No review output from Codex';
 
+      this.reviewStore.markCompleted(reviewId, response);
+
       // Prepare metadata for dual approach:
       // - content[0]._meta: For Claude Code compatibility (avoids structuredContent bug)
       // - structuredContent: For other MCP clients that properly support it
       const metadata: Record<string, unknown> = {
+        reviewId,
         model: selectedModel,
         ...(base && { base }),
         ...(commit && { commit }),
@@ -696,6 +717,10 @@ export class ReviewToolHandler {
         structuredContent: isStructuredContentEnabled() ? metadata : undefined,
       };
     } catch (error) {
+      if (reviewId) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.reviewStore.markFailed(reviewId, message);
+      }
       if (error instanceof ZodError) {
         throw new ValidationError(TOOLS.REVIEW, error.message);
       }
@@ -788,45 +813,101 @@ export class WebSearchToolHandler {
 }
 
 export class ReviewStatusToolHandler {
+  constructor(private reviewStore: ReviewStore) {}
+
   async execute(
     args: unknown,
     _context: ToolHandlerContext = defaultContext
   ): Promise<ToolResult> {
     try {
       const { reviewId }: ReviewStatusToolArgs = ReviewStatusToolSchema.parse(args);
+      const review = this.reviewStore.get(reviewId);
 
-      // Stub implementation: Task 3 will implement actual review tracking
-      throw new ToolExecutionError(
-        TOOLS.REVIEW_STATUS,
-        `Review status tracking not yet implemented (reviewId: ${reviewId})`
-      );
+      if (!review) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `No review found with id ${reviewId} (expired or never existed).`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      const text =
+        review.status === 'running'
+          ? `Review ${review.id}: running (started ${review.startedAt.toISOString()})`
+          : review.status === 'completed'
+            ? `Review ${review.id}: completed (${review.completedAt?.toISOString()})\n\n${review.output || 'No output'}`
+            : `Review ${review.id}: failed (${review.completedAt?.toISOString()})\n\n${review.error}`;
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text,
+            _meta: {
+              reviewId: review.id,
+              status: review.status,
+              planId: review.planId,
+              taskId: review.taskId,
+              phase: review.phase,
+            },
+          },
+        ],
+      };
     } catch (error) {
       if (error instanceof ZodError) {
         throw new ValidationError(TOOLS.REVIEW_STATUS, error.message);
       }
-      throw error;
+      throw new ToolExecutionError(
+        TOOLS.REVIEW_STATUS,
+        'Failed to check review status',
+        error
+      );
     }
   }
 }
 
 export class ReviewListToolHandler {
+  constructor(private reviewStore: ReviewStore) {}
+
   async execute(
     args: unknown,
     _context: ToolHandlerContext = defaultContext
   ): Promise<ToolResult> {
     try {
       const { planId, taskId }: ReviewListToolArgs = ReviewListToolSchema.parse(args);
+      const reviews = this.reviewStore.list({ planId, taskId }).map((review) => ({
+        id: review.id,
+        status: review.status,
+        planId: review.planId,
+        taskId: review.taskId,
+        round: review.round,
+        phase: review.phase,
+        model: review.model,
+        startedAt: review.startedAt.toISOString(),
+        completedAt: review.completedAt?.toISOString(),
+      }));
 
-      // Stub implementation: Task 3 will implement actual review listing
-      throw new ToolExecutionError(
-        TOOLS.REVIEW_LIST,
-        `Review listing not yet implemented (planId: ${planId}, taskId: ${taskId})`
-      );
+      return {
+        content: [
+          {
+            type: 'text',
+            text: reviews.length > 0 ? JSON.stringify(reviews, null, 2) : 'No reviews',
+          },
+        ],
+      };
     } catch (error) {
       if (error instanceof ZodError) {
         throw new ValidationError(TOOLS.REVIEW_LIST, error.message);
       }
-      throw error;
+      throw new ToolExecutionError(
+        TOOLS.REVIEW_LIST,
+        'Failed to list reviews',
+        error
+      );
     }
   }
 }
@@ -834,15 +915,16 @@ export class ReviewListToolHandler {
 // Tool handler registry
 const sessionStorage = new InMemorySessionStorage();
 const jobStore = new InMemoryJobStore();
+const reviewStore = new InMemoryReviewStore();
 
 export const toolHandlers = {
   [TOOLS.CODEX]: new CodexToolHandler(sessionStorage),
   [TOOLS.CODEX_START]: new CodexStartToolHandler(jobStore),
   [TOOLS.CODEX_JOB_STATUS]: new JobStatusToolHandler(jobStore),
   [TOOLS.CODEX_JOB_LIST]: new JobListToolHandler(jobStore),
-  [TOOLS.REVIEW]: new ReviewToolHandler(),
-  [TOOLS.REVIEW_STATUS]: new ReviewStatusToolHandler(),
-  [TOOLS.REVIEW_LIST]: new ReviewListToolHandler(),
+  [TOOLS.REVIEW]: new ReviewToolHandler(reviewStore),
+  [TOOLS.REVIEW_STATUS]: new ReviewStatusToolHandler(reviewStore),
+  [TOOLS.REVIEW_LIST]: new ReviewListToolHandler(reviewStore),
   [TOOLS.PING]: new PingToolHandler(),
   [TOOLS.HELP]: new HelpToolHandler(),
   [TOOLS.LIST_SESSIONS]: new ListSessionsToolHandler(sessionStorage),
