@@ -49,10 +49,9 @@ export interface ReviewStore {
  * review non-blocking.
  */
 export class InMemoryReviewStore implements ReviewStore {
-  private reviews = new Map<string, ReviewRecord & { _createdOrder: number }>();
+  private reviews = new Map<string, ReviewRecord>();
   private readonly maxReviews = 200;
   private readonly reviewTtl = 24 * 60 * 60 * 1000; // 24 hours
-  private createdOrder = 0;
 
   create(meta: ReviewStoreMeta): string {
     this.cleanupExpired();
@@ -62,7 +61,6 @@ export class InMemoryReviewStore implements ReviewStore {
       status: 'running',
       startedAt: new Date(),
       ...meta,
-      _createdOrder: this.createdOrder++,
     });
     this.enforceMax();
     return id;
@@ -90,17 +88,24 @@ export class InMemoryReviewStore implements ReviewStore {
 
   list(filter?: ReviewListFilter): ReviewRecord[] {
     this.cleanupExpired();
-    let results = Array.from(this.reviews.values());
+    // Zip with insertion order index before filtering. When multiple records share
+    // the same startedAt timestamp (common under coarse OS clock resolution),
+    // tie-break by insertion order (higher index = newer) to ensure newest-first.
+    let results = Array.from(this.reviews.values()).map((r, i) => ({ r, i }));
+
     if (filter?.planId) {
-      results = results.filter((r) => r.planId === filter.planId);
+      results = results.filter((item) => item.r.planId === filter.planId);
     }
     if (filter?.taskId) {
-      results = results.filter((r) => r.taskId === filter.taskId);
+      results = results.filter((item) => item.r.taskId === filter.taskId);
     }
-    return results.sort((a, b) => {
-      const timeDiff = b.startedAt.getTime() - a.startedAt.getTime();
-      return timeDiff !== 0 ? timeDiff : b._createdOrder - a._createdOrder;
-    });
+
+    return results
+      .sort((a, b) => {
+        const timeDiff = b.r.startedAt.getTime() - a.r.startedAt.getTime();
+        return timeDiff !== 0 ? timeDiff : b.i - a.i;
+      })
+      .map((item) => item.r);
   }
 
   private cleanupExpired(): void {
