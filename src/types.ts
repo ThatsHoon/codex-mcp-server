@@ -7,6 +7,8 @@ export const TOOLS = {
   CODEX_JOB_STATUS: 'codexJobStatus',
   CODEX_JOB_LIST: 'codexJobList',
   REVIEW: 'review',
+  REVIEW_STATUS: 'reviewStatus',
+  REVIEW_LIST: 'reviewList',
   PING: 'ping',
   HELP: 'help',
   LIST_SESSIONS: 'listSessions',
@@ -136,6 +138,25 @@ export const ReviewToolSchema = z.object({
   title: z.string().optional(),
   model: z.string().optional(),
   workingDirectory: z.string().optional(),
+  // Fork-local addition: correlate a review to the caller's plan/task/round
+  // so codex-mcp-server can answer reviewStatus/reviewList queries. Never
+  // interpreted server-side beyond storage — the caller's ledger remains
+  // the durable record.
+  planId: z.string().optional(),
+  taskId: z.string().optional(),
+  round: z.number().int().min(1).optional(),
+  phase: z.enum(['task-review', 're-review', 'final-review']).optional(),
+});
+
+// reviewStatus / reviewList tool schemas — mirror JobStatusToolSchema /
+// JobListToolSchema, but for review records instead of async jobs.
+export const ReviewStatusToolSchema = z.object({
+  reviewId: z.string().min(1, 'reviewId is required'),
+});
+
+export const ReviewListToolSchema = z.object({
+  planId: z.string().optional(),
+  taskId: z.string().optional(),
 });
 
 // codexStart uses the same shape as CodexToolSchema minus sessionId/resetSession
@@ -177,6 +198,8 @@ export type CodexStartToolArgs = z.infer<typeof CodexStartToolSchema>;
 export type JobStatusToolArgs = z.infer<typeof JobStatusToolSchema>;
 export type JobListToolArgs = z.infer<typeof JobListToolSchema>;
 export type ReviewToolArgs = z.infer<typeof ReviewToolSchema>;
+export type ReviewStatusToolArgs = z.infer<typeof ReviewStatusToolSchema>;
+export type ReviewListToolArgs = z.infer<typeof ReviewListToolSchema>;
 export type PingToolArgs = z.infer<typeof PingToolSchema>;
 export type ListSessionsToolArgs = z.infer<typeof ListSessionsToolSchema>;
 export type WebSearchToolArgs = z.infer<typeof WebSearchToolSchema>;

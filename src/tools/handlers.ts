@@ -11,6 +11,8 @@ import {
   type JobStatusToolArgs,
   type JobListToolArgs,
   type ReviewToolArgs,
+  type ReviewStatusToolArgs,
+  type ReviewListToolArgs,
   type PingToolArgs,
   type WebSearchToolArgs,
   CodexToolSchema,
@@ -18,6 +20,8 @@ import {
   JobStatusToolSchema,
   JobListToolSchema,
   ReviewToolSchema,
+  ReviewStatusToolSchema,
+  ReviewListToolSchema,
   PingToolSchema,
   HelpToolSchema,
   ListSessionsToolSchema,
@@ -783,6 +787,50 @@ export class WebSearchToolHandler {
   }
 }
 
+export class ReviewStatusToolHandler {
+  async execute(
+    args: unknown,
+    _context: ToolHandlerContext = defaultContext
+  ): Promise<ToolResult> {
+    try {
+      const { reviewId }: ReviewStatusToolArgs = ReviewStatusToolSchema.parse(args);
+
+      // Stub implementation: Task 3 will implement actual review tracking
+      throw new ToolExecutionError(
+        TOOLS.REVIEW_STATUS,
+        `Review status tracking not yet implemented (reviewId: ${reviewId})`
+      );
+    } catch (error) {
+      if (error instanceof ZodError) {
+        throw new ValidationError(TOOLS.REVIEW_STATUS, error.message);
+      }
+      throw error;
+    }
+  }
+}
+
+export class ReviewListToolHandler {
+  async execute(
+    args: unknown,
+    _context: ToolHandlerContext = defaultContext
+  ): Promise<ToolResult> {
+    try {
+      const { planId, taskId }: ReviewListToolArgs = ReviewListToolSchema.parse(args);
+
+      // Stub implementation: Task 3 will implement actual review listing
+      throw new ToolExecutionError(
+        TOOLS.REVIEW_LIST,
+        `Review listing not yet implemented (planId: ${planId}, taskId: ${taskId})`
+      );
+    } catch (error) {
+      if (error instanceof ZodError) {
+        throw new ValidationError(TOOLS.REVIEW_LIST, error.message);
+      }
+      throw error;
+    }
+  }
+}
+
 // Tool handler registry
 const sessionStorage = new InMemorySessionStorage();
 const jobStore = new InMemoryJobStore();
@@ -793,6 +841,8 @@ export const toolHandlers = {
   [TOOLS.CODEX_JOB_STATUS]: new JobStatusToolHandler(jobStore),
   [TOOLS.CODEX_JOB_LIST]: new JobListToolHandler(jobStore),
   [TOOLS.REVIEW]: new ReviewToolHandler(),
+  [TOOLS.REVIEW_STATUS]: new ReviewStatusToolHandler(),
+  [TOOLS.REVIEW_LIST]: new ReviewListToolHandler(),
   [TOOLS.PING]: new PingToolHandler(),
   [TOOLS.HELP]: new HelpToolHandler(),
   [TOOLS.LIST_SESSIONS]: new ListSessionsToolHandler(sessionStorage),

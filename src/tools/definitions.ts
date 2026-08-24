@@ -201,6 +201,27 @@ export const toolDefinitions: ToolDefinition[] = [
           description:
             'Working directory to run the review in (passed via -C as a global Codex option)',
         },
+        planId: {
+          type: 'string',
+          description:
+            'Fork-local: correlate this review to a plan (e.g. the plan file slug) for reviewStatus/reviewList lookups. Purely a tracking tag — never interpreted.',
+        },
+        taskId: {
+          type: 'string',
+          description:
+            'Fork-local: correlate this review to a task number within the plan. Tracking tag only.',
+        },
+        round: {
+          type: 'number',
+          description:
+            'Fork-local: fix-loop round number, for re-review calls. Tracking tag only.',
+        },
+        phase: {
+          type: 'string',
+          enum: ['task-review', 're-review', 'final-review'],
+          description:
+            'Fork-local: which SDD review touchpoint this call is for. Tracking tag only.',
+        },
       },
       required: [],
     },
@@ -210,6 +231,54 @@ export const toolDefinitions: ToolDefinition[] = [
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: true,
+    },
+  },
+  {
+    name: TOOLS.REVIEW_STATUS,
+    description:
+      'Check the status of a review started with review. Returns "running" until the process exits, then "completed" (with the review text) or "failed" (with an error message).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        reviewId: {
+          type: 'string',
+          description: 'The reviewId returned by review',
+        },
+      },
+      required: ['reviewId'],
+    },
+    annotations: {
+      title: 'Check Review Status',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: TOOLS.REVIEW_LIST,
+    description:
+      'List tracked review calls (running, completed, and failed), newest first. Optionally filter by planId and/or taskId.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        planId: {
+          type: 'string',
+          description: 'Only list reviews tagged with this planId',
+        },
+        taskId: {
+          type: 'string',
+          description: 'Only list reviews tagged with this taskId',
+        },
+      },
+      required: [],
+    },
+    annotations: {
+      title: 'List Reviews',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
     },
   },
   {
