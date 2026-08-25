@@ -59,6 +59,28 @@ describe('review tracking (review / reviewStatus / reviewList)', () => {
     expect(record.error).toContain('codex exec exited 1');
   });
 
+  test('a sandbox-init failure disguised as a clean response is marked failed, not completed', async () => {
+    // codex CLI can exit 0 with a "no findings, low confidence" summary when
+    // its bwrap sandbox fails to initialize (e.g. AppArmor userns denial) —
+    // the diff was never actually inspected. This must not be tracked as a
+    // completed review, or the SDD retry/fallback-to-Claude-Agent logic
+    // never engages.
+    mockExecuteCommand.mockResolvedValue({
+      stdout:
+        'No actionable findings were identified. Repository inspection was limited because the sandbox failed to initialize (`bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`).',
+      stderr: '',
+    });
+
+    const store = new InMemoryReviewStore();
+    const review = new ReviewToolHandler(store);
+
+    await expect(review.execute({ uncommitted: true, phase: 'task-review' })).rejects.toThrow();
+
+    const [record] = store.list();
+    expect(record.status).toBe('failed');
+    expect(record.error).toContain('sandbox failed to initialize');
+  });
+
   test('reviewList filters by planId and taskId', async () => {
     mockExecuteCommand.mockResolvedValue({ stdout: 'ok', stderr: '' });
 

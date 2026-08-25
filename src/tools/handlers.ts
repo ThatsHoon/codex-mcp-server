@@ -727,6 +727,19 @@ export class ReviewToolHandler {
       const response =
         result.stdout || result.stderr || 'No review output from Codex';
 
+      // Fork-local: a sandbox init failure (e.g. bwrap netns/AppArmor
+      // denial) makes codex return a normal-looking "no findings, low
+      // confidence" summary instead of a CLI error — silently masking a
+      // review that never actually inspected the diff. Surface it as a
+      // failure so the retry / Claude-Agent-fallback logic in
+      // subagent-driven-development actually engages instead of treating
+      // this as a clean pass.
+      if (/sandbox failed/i.test(response)) {
+        throw new Error(
+          `Codex review did not inspect the diff — sandbox failed to initialize: ${response}`
+        );
+      }
+
       this.reviewStore.markCompleted(reviewId, response);
 
       // Prepare metadata for dual approach:
